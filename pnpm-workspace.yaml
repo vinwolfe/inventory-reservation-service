@@ -1,0 +1,5 @@
+packages:
+  - "packages/*"
+allowBuilds:
+  # esbuild ships a postinstall script; pnpm blocks it by default since v10
+  esbuild: true

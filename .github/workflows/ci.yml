@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # commitlint needs full history to diff the PR's range
+
+      # Version resolved from package.json's "packageManager" field
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # PR-only
+      - if: github.event_name == 'pull_request'
+        uses: wagoid/commitlint-github-action@v6
+
+      - run: pnpm lint
+
+      - run: pnpm typecheck
+
+      - run: pnpm test

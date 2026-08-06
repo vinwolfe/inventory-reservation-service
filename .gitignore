@@ -1,0 +1,25 @@
+# Internal planning notes
+/docs/
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Test / coverage
+coverage/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+.vscode/
+!.vscode/extensions.json
+
+# Logs
+*.log
