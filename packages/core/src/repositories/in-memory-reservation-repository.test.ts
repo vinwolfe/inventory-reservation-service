@@ -5,7 +5,9 @@ const reservation = {
   id: "b3b1c2a0-1e2a-4b3a-9c1a-2f3e4d5c6b7a",
   productId: "c4c2d3b1-2f3b-4c4b-8d2b-3a4f5e6d7c8b",
   quantity: 2,
+  status: "active" as const,
   createdAt: new Date(),
+  expiresAt: new Date(Date.now() + 60_000),
 };
 
 describe("InMemoryReservationRepository", () => {
