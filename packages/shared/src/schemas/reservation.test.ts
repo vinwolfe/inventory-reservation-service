@@ -5,7 +5,9 @@ const valid = {
   id: "b3b1c2a0-1e2a-4b3a-9c1a-2f3e4d5c6b7a",
   productId: "c4c2d3b1-2f3b-4c4b-8d2b-3a4f5e6d7c8b",
   quantity: 2,
+  status: "active",
   createdAt: new Date(),
+  expiresAt: new Date(),
 };
 
 describe("reservationSchema", () => {
@@ -35,6 +37,12 @@ describe("reservationSchema", () => {
 
   it("rejects non-integer quantity", () => {
     const result = reservationSchema.safeParse({ ...valid, quantity: 1.5 });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an unknown status", () => {
+    const result = reservationSchema.safeParse({ ...valid, status: "held" });
 
     expect(result.success).toBe(false);
   });
