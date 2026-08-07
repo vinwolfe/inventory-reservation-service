@@ -1,1 +1,2 @@
-export const PACKAGE_NAME = "@reservation/shared";
+export { productSchema, type Product } from "./schemas/product.js";
+export { reservationSchema, type Reservation } from "./schemas/reservation.js";
