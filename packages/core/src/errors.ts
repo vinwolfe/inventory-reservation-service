@@ -11,3 +11,17 @@ export class OutOfStockError extends Error {
     this.name = "OutOfStockError";
   }
 }
+
+export class ReservationNotFoundError extends Error {
+  constructor(reservationId: string) {
+    super(`Reservation not found: ${reservationId}`);
+    this.name = "ReservationNotFoundError";
+  }
+}
+
+export class InvalidTransitionError extends Error {
+  constructor(reservationId: string, status: string) {
+    super(`Reservation ${reservationId} cannot be modified: status is ${status}`);
+    this.name = "InvalidTransitionError";
+  }
+}
