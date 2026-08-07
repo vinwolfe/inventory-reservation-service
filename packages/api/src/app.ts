@@ -4,9 +4,13 @@ import { serializerCompiler, validatorCompiler } from "fastify-type-provider-zod
 import {
   InMemoryProductRepository,
   InMemoryReservationRepository,
+  InvalidTransitionError,
   OutOfStockError,
   ProductNotFoundError,
+  ReservationNotFoundError,
   ReservationService,
+  systemClock,
+  type Clock,
   type ProductRepository,
   type ReservationRepository,
 } from "@reservation/core";
@@ -26,6 +30,7 @@ function envelope(statusCode: number, code: string, message: string) {
 export interface AppDependencies {
   products?: ProductRepository;
   reservations?: ReservationRepository;
+  clock?: Clock;
 }
 
 export interface App {
@@ -37,7 +42,8 @@ export interface App {
 export function buildApp(deps: AppDependencies = {}): App {
   const products = deps.products ?? new InMemoryProductRepository();
   const reservations = deps.reservations ?? new InMemoryReservationRepository();
-  const reservationService = new ReservationService(products, reservations);
+  const clock = deps.clock ?? systemClock;
+  const reservationService = new ReservationService(products, reservations, clock);
 
   const app = Fastify();
   app.setValidatorCompiler(validatorCompiler);
@@ -48,10 +54,10 @@ export function buildApp(deps: AppDependencies = {}): App {
   // Anything Fastify/domain code didn't already mark as client-safe is logged
   // server-side and reported generically, so internals never leak to the client.
   app.setErrorHandler((error: FastifyErrorLike, request, reply) => {
-    if (error instanceof ProductNotFoundError) {
+    if (error instanceof ProductNotFoundError || error instanceof ReservationNotFoundError) {
       return reply.code(404).send(envelope(404, error.name, error.message));
     }
-    if (error instanceof OutOfStockError) {
+    if (error instanceof OutOfStockError || error instanceof InvalidTransitionError) {
       return reply.code(409).send(envelope(409, error.name, error.message));
     }
     if (error.statusCode) {

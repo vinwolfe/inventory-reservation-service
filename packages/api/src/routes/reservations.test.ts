@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ProductRepository } from "@reservation/core";
+import { FakeClock, type ProductRepository } from "@reservation/core";
 import { buildApp } from "../app.js";
 
 const product = {
@@ -118,5 +118,185 @@ describe("POST /v1/products/:id/reservations", () => {
     const body = response.json();
     expect(body.message).toBe("Internal Server Error");
     expect(JSON.stringify(body)).not.toContain("connection string");
+  });
+});
+
+describe("GET /v1/reservations/:id", () => {
+  it("returns 200 and the reservation when it exists", async () => {
+    const { app, products } = buildApp();
+    products.save(product);
+    const created = await app.inject({
+      method: "POST",
+      url: `/v1/products/${product.id}/reservations`,
+      payload: { quantity: 2 },
+    });
+    const { id } = created.json();
+
+    const response = await app.inject({ method: "GET", url: `/v1/reservations/${id}` });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ id, productId: product.id, status: "active" });
+  });
+
+  it("returns 404 with a consistent error envelope when the reservation does not exist", async () => {
+    const { app } = buildApp();
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/reservations/b3b1c2a0-1e2a-4b3a-9c1a-2f3e4d5c6b7a",
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({ statusCode: 404, error: "Not Found" });
+  });
+
+  it("reports an expired status once the hold window passes", async () => {
+    const clock = new FakeClock();
+    const { app, products } = buildApp({ clock });
+    products.save(product);
+    const created = await app.inject({
+      method: "POST",
+      url: `/v1/products/${product.id}/reservations`,
+      payload: { quantity: 2 },
+    });
+    const { id } = created.json();
+    clock.advance(2 * 60 * 1000 + 1);
+
+    const response = await app.inject({ method: "GET", url: `/v1/reservations/${id}` });
+
+    expect(response.json()).toMatchObject({ id, status: "expired" });
+  });
+});
+
+describe("POST /v1/reservations/:id/confirm", () => {
+  it("returns 200 and the confirmed reservation", async () => {
+    const { app, products } = buildApp();
+    products.save(product);
+    const created = await app.inject({
+      method: "POST",
+      url: `/v1/products/${product.id}/reservations`,
+      payload: { quantity: 2 },
+    });
+    const { id } = created.json();
+
+    const response = await app.inject({ method: "POST", url: `/v1/reservations/${id}/confirm` });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ id, status: "confirmed" });
+  });
+
+  it("returns 409 with a consistent error envelope when confirming twice", async () => {
+    const { app, products } = buildApp();
+    products.save(product);
+    const created = await app.inject({
+      method: "POST",
+      url: `/v1/products/${product.id}/reservations`,
+      payload: { quantity: 2 },
+    });
+    const { id } = created.json();
+    await app.inject({ method: "POST", url: `/v1/reservations/${id}/confirm` });
+
+    const response = await app.inject({ method: "POST", url: `/v1/reservations/${id}/confirm` });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ statusCode: 409, error: "Conflict" });
+  });
+
+  it("returns 404 with a consistent error envelope when the reservation does not exist", async () => {
+    const { app } = buildApp();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/reservations/b3b1c2a0-1e2a-4b3a-9c1a-2f3e4d5c6b7a/confirm",
+    });
+
+    expect(response.statusCode).toBe(404);
+  });
+
+  it("returns 409 with a consistent error envelope when confirming an expired reservation", async () => {
+    const clock = new FakeClock();
+    const { app, products } = buildApp({ clock });
+    products.save(product);
+    const created = await app.inject({
+      method: "POST",
+      url: `/v1/products/${product.id}/reservations`,
+      payload: { quantity: 2 },
+    });
+    const { id } = created.json();
+    clock.advance(2 * 60 * 1000 + 1);
+
+    const response = await app.inject({ method: "POST", url: `/v1/reservations/${id}/confirm` });
+
+    expect(response.statusCode).toBe(409);
+  });
+
+  it("returns 409 with a consistent error envelope when confirming a cancelled reservation", async () => {
+    const { app, products } = buildApp();
+    products.save(product);
+    const created = await app.inject({
+      method: "POST",
+      url: `/v1/products/${product.id}/reservations`,
+      payload: { quantity: 2 },
+    });
+    const { id } = created.json();
+    await app.inject({ method: "POST", url: `/v1/reservations/${id}/cancel` });
+
+    const response = await app.inject({ method: "POST", url: `/v1/reservations/${id}/confirm` });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ statusCode: 409, error: "Conflict" });
+  });
+});
+
+describe("POST /v1/reservations/:id/cancel", () => {
+  it("returns 200, the cancelled reservation, and frees its stock", async () => {
+    const { app, products } = buildApp();
+    products.save(product);
+    const created = await app.inject({
+      method: "POST",
+      url: `/v1/products/${product.id}/reservations`,
+      payload: { quantity: 2 },
+    });
+    const { id } = created.json();
+
+    const response = await app.inject({ method: "POST", url: `/v1/reservations/${id}/cancel` });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ id, status: "cancelled" });
+
+    const reReserved = await app.inject({
+      method: "POST",
+      url: `/v1/products/${product.id}/reservations`,
+      payload: { quantity: 5 },
+    });
+    expect(reReserved.statusCode).toBe(201);
+  });
+
+  it("returns 409 with a consistent error envelope when cancelling twice", async () => {
+    const { app, products } = buildApp();
+    products.save(product);
+    const created = await app.inject({
+      method: "POST",
+      url: `/v1/products/${product.id}/reservations`,
+      payload: { quantity: 2 },
+    });
+    const { id } = created.json();
+    await app.inject({ method: "POST", url: `/v1/reservations/${id}/cancel` });
+
+    const response = await app.inject({ method: "POST", url: `/v1/reservations/${id}/cancel` });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ statusCode: 409, error: "Conflict" });
+  });
+
+  it("returns 404 with a consistent error envelope when the reservation does not exist", async () => {
+    const { app } = buildApp();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/reservations/b3b1c2a0-1e2a-4b3a-9c1a-2f3e4d5c6b7a/cancel",
+    });
+
+    expect(response.statusCode).toBe(404);
   });
 });
